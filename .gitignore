@@ -1,5 +1,11 @@
 runtime_saves/
 
+# macOS metadata
+.DS_Store
+
+# Trained model binaries (regenerate with python train.py)
+models/*.pkl
+
 # --- MicrosoftOffice.gitignore ---
 *.tmp
 

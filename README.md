@@ -1,45 +1,143 @@
-# AI Driving Classification
+# AI-Driven Personalized GPS Routing
+**Author:** Angel Andrade — Georgia State University, Dept. of Computer Science
 
-## Project Overview
-This project investigates the use of Artificial Intelligence (AI) and Deep Learning (DL) techniques to analyze and classify different driving behaviors using sensor data collected from mobile devices. The study focuses on Recurrent Neural Networks (RNN), particularly Long Short-Term Memory (LSTM) architectures, to develop a system capable of classifying driving behaviors such as acceleration, braking, cornering, and navigating roundabouts.
+## Overview
+A two-component AI system that classifies real-time driver behavior from smartphone sensor data and uses the result to personalize GPS route recommendations.
 
-### Motivation
-The motivation for this project is to enhance road safety by analyzing driving behaviors in real-time using the sensors available in smartphones. The goal is to create an accessible and effective solution for detecting and classifying various driving styles, thereby contributing to accident prevention and promoting responsible driving.
+**Component 1 — Behavior Classification**  
+Extracts 14 features (10 raw + 4 derived relative features) from the UAH-DriveSet sensor recordings, applies per-driver z-score normalization, and trains six models (Random Forest, KNN, Naive Bayes, SVM, XGBoost, MLP) plus a soft-voting ensemble to classify each driver into one of three profiles. Best result: MLP at 69.15% accuracy on the cross-driver split (D1–D5 train, D6 test).
 
-### Authors
-- Alberto Pingo ([@albertopingo](https://github.com/albertopingo))
-- João Castro ([@jcastroo](https://github.com/jcastroo))
+| Label | Encoded | Meaning |
+|-------|---------|---------|
+| Normal | 0 | Balanced driving style |
+| Conservative | 1 | Calm, prefers quieter roads |
+| Spirited | 2 | Energetic, exploits shortcuts and highways |
 
+**Component 2 — Personalized Routing**  
+Builds a weighted road graph and computes a profile-specific route for the classified driver.
 
-# Methodology
-The project is approached from two perspectives:
+---
 
-First Approach: Analyzes data from a complete trip by segmenting sensor data (accelerometer, gyroscope) to classify driving patterns over an entire journey. Architectures such as Stacked LSTM, Bidirectional LSTM, and Convolutional LSTM were applied.
+## Requirements
 
-Second Approach: Focuses on specific driving scenarios like acceleration, braking, and cornering, with pre-classified driving styles as "Slow," "Normal," and "Aggressive." This approach allows the development of models that can classify diverse behavior patterns in different driving situations.
+- **Python 3.10 – 3.13**
+- **macOS** — XGBoost requires the OpenMP runtime (`libomp`). See the [macOS note](#macos-note-xgboost--libomp) below.
+- **Linux/Windows** — OpenMP is typically available by default.
 
-### Key Technologies
-Python: The primary programming language used for model development.
+---
 
-TensorFlow & Keras: Libraries used for building and training the neural network models.
+## Setup
 
-Pandas, NumPy, Matplotlib, Seaborn: For data manipulation, analysis, and visualization.
+### 1. Clone the repository
+```bash
+git clone <repo-url>
+cd AI-driving-classification
+```
 
-### Key Directories
-- datasets/: Contains the datasets used for training and testing the models.
-- code/: Contains Jupyter notebooks and models for both approaches.
-  - first-approach/: Code for analyzing a complete trip using various LSTM architectures.
-  - second-approach/: Code for specific driving scenarios classified into "Slow," "Normal," and "Aggressive."
-- extras/, others/, publications/: Additional resources, references, and publications related to the project.
+### 2. Create and activate a virtual environment
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # macOS / Linux
+# .venv\Scripts\activate         # Windows
+```
 
-## Acknowledgments
-We would like to express our gratitude to the following individuals and groups:
-- Professors Sílvio Priem Mendes, Anabela Moreira Bernardino, and Paulo Jorge Gonçalves Loureiro for their guidance, support, and availability throughout the development of this project.
-- Students who developed the Vehicle Tracking Application, which was instrumental in obtaining the datasets for this project. Your work provided the necessary tools for our data collection and analysis efforts.
-- All the professors who accompanied us throughout our course, whose knowledge was fundamental to the completion of this project as well as our academic and personal growth.
+### 3. Install dependencies
+```bash
+pip install -r requirements.txt
+```
 
-## License
-The source code and datasets located in the `code/`, `others/`, `publications/FINAL_SUBMISSION/`, and datasets in `datasets/` directories are licensed under the [MIT License](LICENSE.md).  
-All documentation, academic content, and presentation materials — including reports, papers, and slides — found in the `publications/` and `others/` directories are licensed under the [Creative Commons Attribution 4.0 International License (CC BY 4.0)](LICENSE-CC-BY-4.0.md). [![CC BY 4.0](https://i.creativecommons.org/l/by/4.0/88x31.png)](http://creativecommons.org/licenses/by/4.0/)
+---
 
+## macOS Note: XGBoost & libomp
 
+XGBoost on Apple Silicon requires the ARM64 OpenMP runtime. If you get an error like `XGBoost Library (libxgboost.dylib) could not be loaded`, run:
+
+```bash
+# Install ARM64 Homebrew (safe to run even if you already have Intel Homebrew)
+arch -arm64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Then install libomp
+/opt/homebrew/bin/brew install libomp
+```
+
+If you only have the Intel Homebrew (`/usr/local/bin/brew`), `brew install libomp` installs the x86_64 version which will not work with ARM64 Python packages.
+
+---
+
+## Dataset
+
+**UAH-DriveSet** — Romera et al., ITSC 2016  
+The dataset is included in this repo at `datasets/UAH-DRIVESET-v1/` — no separate download needed. Just clone and run.
+
+---
+
+## Running the Pipeline
+
+Run the scripts in order from within the project directory:
+
+### Step 1 — Preprocess
+```bash
+python preprocess.py
+```
+Walks `datasets/UAH-DRIVESET-v1/`, builds 5-second sliding windows, extracts features, and writes `processed_dataset.csv`.
+
+### Step 2 — Train
+```bash
+python train.py
+```
+Trains all six models on `processed_dataset.csv` and saves them to `models/`.  
+Also writes figures and the comparison table:
+
+| Output | Description |
+|--------|-------------|
+| `models/mlp.pkl` | Best-performing model (69.15% accuracy, cross-driver split) |
+| `models/random_forest.pkl`, `knn.pkl`, `svm.pkl`, `gaussian_nb.pkl`, `xgboost.pkl` | Remaining classifiers |
+| `models/scaler.pkl` | StandardScaler fitted on training data |
+| `results/model_comparison.csv` | Per-model accuracy, precision, recall, F1 |
+| `figures/model_comparison_bar.png` | Grouped bar chart |
+| `figures/random_forest_feature_importance.png` | Feature importance plot |
+
+### Step 3 — Evaluate
+```bash
+python evaluate.py
+```
+Loads every saved model, reconstructs the driver-based test split (D1–D5 train | D6 test), and prints full evaluation metrics.  
+Saves 7 confusion matrix heatmaps to `figures/` (6 individual models + soft voting ensemble).
+
+### Step 4 — Routing (optional standalone)
+```bash
+python routing.py
+```
+Builds the road graph and generates a route comparison figure for all three driver profiles.
+
+### Step 5 — End-to-End Demo
+```bash
+python main.py
+```
+Runs the full pipeline on a held-out test sample:
+1. Loads the first window from the D6 test set
+2. Classifies it with the MLP model (best performer, 69.15% accuracy)
+3. Computes and prints the profile-personalized route recommendation
+4. Saves a route visualization to `figures/`
+
+---
+
+## Project Structure
+
+```
+AI-driving-classification/
+├── datasets/
+│   └── UAH-DRIVESET-v1/       # Raw sensor data
+├── figures/                    # Generated plots and charts
+├── models/                     # Trained models (generated by train.py, not in repo)
+├── results/
+│   └── model_comparison.csv   # Per-model evaluation metrics
+├── paper/                      # Research paper / proposal
+├── preprocess.py               # Step 1: feature extraction
+├── train.py                    # Step 2: model training
+├── evaluate.py                 # Step 3: model evaluation
+├── routing.py                  # Route graph and recommendation logic
+├── main.py                     # End-to-end demo
+├── processed_dataset.csv       # Output of preprocess.py
+└── requirements.txt            # Python dependencies
+```
